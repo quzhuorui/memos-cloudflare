@@ -77,11 +77,29 @@ app.use('/api/tag/*', authMiddleware);
 app.use('/api/resource/*', authMiddleware);
 app.use('/api/webhook/*', authMiddleware);
 
-// memo 路由需要部分认证
-app.use('/api/memo', authMiddleware);
-app.post('/api/memo/*', authMiddleware);
-app.patch('/api/memo/*', authMiddleware);
-app.delete('/api/memo/*', authMiddleware);
+// memo 路由需要部分认证：
+// - 允许匿名 GET（列表与单条公开 memo）
+// - 对非 GET 请求（创建/更新/删除）执行鉴权
+app.use('/api/memo', async (c, next) => {
+  const method = c.req.method;
+  if (method === 'GET' || method === 'OPTIONS') {
+    return next();
+  }
+  // 对其他方法走 authMiddleware
+  // 注意：authMiddleware 会在内部返回 401/403 等响应或调用 next()
+  return authMiddleware(c as any, next);
+});
+
+// Also expose the v1 compatible memo endpoint for compatibility with original memos API
+app.use('/api/v1/memo', async (c, next) => {
+  const method = c.req.method;
+  if (method === 'GET' || method === 'OPTIONS') {
+    return next();
+  }
+  return authMiddleware(c as any, next);
+});
+
+app.route('/api/v1/memo', memoRoutes);
 
 app.route('/api/user', userRoutes);
 app.route('/api/memo', memoRoutes);

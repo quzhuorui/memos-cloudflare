@@ -360,4 +360,113 @@ userRoutes.patch('/:id/setting', async (c) => {
   }
 });
 
+// Access token APIs for a user
+// GET /:id/access-token  -> list tokens
+// POST /:id/access-token -> create token, returns { accessToken }
+// DELETE /:id/access-token -> delete token by accessToken
+userRoutes.get('/:id/access-token', async (c) => {
+  try {
+    const userId = parseInt(c.req.param('id'));
+    const userPayload = c.get('user');
+    if (!userPayload) {
+      return c.json({ message: 'Unauthorized' }, 401);
+    }
+
+    // Only the user themself or HOST can list tokens
+    const targetUser = await c.env.DB.prepare('SELECT * FROM user WHERE id = ? AND row_status = ?').bind(userId, 'NORMAL').first();
+    if (!targetUser) return c.json({ message: 'User not found' }, 404);
+    if (targetUser.uid !== userPayload.sub && userPayload.role !== 'HOST') {
+      return c.json({ message: 'Forbidden' }, 403);
+    }
+
+    const rows = await c.env.DB.prepare(
+      'SELECT access_token, description, expires_at, created_ts FROM user_access_token WHERE user_id = ? ORDER BY created_ts DESC'
+    ).bind(userId).all();
+
+    const accessTokens = (rows.results || []).map((r: any) => ({
+      accessToken: r.access_token,
+      description: r.description,
+      issuedAt: r.created_ts,
+      expiresAt: r.expires_at || null,
+    }));
+
+    return c.json({ accessTokens });
+  } catch (error) {
+    console.error('List user access tokens error:', error);
+    return c.json({ message: 'Internal server error' }, 500);
+  }
+});
+
+userRoutes.post('/:id/access-token', async (c) => {
+  try {
+    const userId = parseInt(c.req.param('id'));
+    const userPayload = c.get('user');
+    if (!userPayload) {
+      return c.json({ message: 'Unauthorized' }, 401);
+    }
+
+    const targetUser = await c.env.DB.prepare('SELECT * FROM user WHERE id = ? AND row_status = ?').bind(userId, 'NORMAL').first();
+    if (!targetUser) return c.json({ message: 'User not found' }, 404);
+    if (targetUser.uid !== userPayload.sub && userPayload.role !== 'HOST') {
+      return c.json({ message: 'Forbidden' }, 403);
+    }
+
+    const body = await c.req.json();
+    const description = body.description || '';
+    let expiresAt: number | null = null;
+    if (body.expiresAt) {
+      // accept number (seconds) or ISO string
+      const v = body.expiresAt;
+      if (typeof v === 'number') expiresAt = v;
+      else expiresAt = Math.floor(new Date(v).getTime() / 1000);
+    }
+
+    // generate secure random token
+    let token = '';
+    try {
+      const arr = new Uint8Array(32);
+      crypto.getRandomValues(arr);
+      token = Array.from(arr).map((b) => b.toString(16).padStart(2, '0')).join('');
+    } catch (e) {
+      // fallback
+      token = `tok_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+    }
+
+    await c.env.DB.prepare(
+      'INSERT INTO user_access_token (user_id, access_token, description, expires_at, created_ts) VALUES (?, ?, ?, ?, ?)'
+    ).bind(userId, token, description, expiresAt, Math.floor(Date.now() / 1000)).run();
+
+    // Return the raw token so client can copy it (same as original memos behaviour)
+    return c.json({ accessToken: token });
+  } catch (error) {
+    console.error('Create user access token error:', error);
+    return c.json({ message: 'Internal server error' }, 500);
+  }
+});
+
+userRoutes.delete('/:id/access-token', async (c) => {
+  try {
+    const userId = parseInt(c.req.param('id'));
+    const userPayload = c.get('user');
+    if (!userPayload) {
+      return c.json({ message: 'Unauthorized' }, 401);
+    }
+
+    const targetUser = await c.env.DB.prepare('SELECT * FROM user WHERE id = ? AND row_status = ?').bind(userId, 'NORMAL').first();
+    if (!targetUser) return c.json({ message: 'User not found' }, 404);
+    if (targetUser.uid !== userPayload.sub && userPayload.role !== 'HOST') {
+      return c.json({ message: 'Forbidden' }, 403);
+    }
+
+    const { accessToken } = await c.req.json();
+    if (!accessToken) return c.json({ message: 'accessToken required' }, 400);
+
+    await c.env.DB.prepare('DELETE FROM user_access_token WHERE user_id = ? AND access_token = ?').bind(userId, accessToken).run();
+
+    return c.json({});
+  } catch (error) {
+    console.error('Delete user access token error:', error);
+    return c.json({ message: 'Internal server error' }, 500);
+  }
+});
 export { userRoutes }; 

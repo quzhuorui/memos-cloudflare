@@ -460,6 +460,26 @@ class ApiClient {
       memoVisibility: setting.memoVisibility,
     };
   }
+
+  // Access Token APIs
+  async listUserAccessTokens(userId: number) {
+    // 返回 { accessTokens: [...] }
+    return this.request(`/api/user/${userId}/access-token`);
+  }
+
+  async createUserAccessToken(userId: number, data: { description?: string; expiresAt?: number | string | null }) {
+    return this.request(`/api/user/${userId}/access-token`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteUserAccessToken(userId: number, accessToken: string) {
+    return this.request(`/api/user/${userId}/access-token`, {
+      method: 'DELETE',
+      body: JSON.stringify({ accessToken }),
+    });
+  }
 }
 
 export const apiClient = new ApiClient();

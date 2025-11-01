@@ -33,6 +33,18 @@ CREATE TABLE user_setting (
     FOREIGN KEY (user_id) REFERENCES user (id) ON DELETE CASCADE
 );
 
+-- 用户 access token 表（用于存储用户为 API/外部服务创建的访问令牌）
+CREATE TABLE user_access_token (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    access_token TEXT NOT NULL UNIQUE,
+    description TEXT,
+    expires_at INTEGER,
+    created_ts INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+    FOREIGN KEY (user_id) REFERENCES user (id) ON DELETE CASCADE
+);
+
+
 -- 备忘录表
 CREATE TABLE memo (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
